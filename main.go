@@ -40,6 +40,9 @@ var (
 )
 
 func main() {
+	log.SetPrefix("")
+	log.SetFlags(0)
+
 	flag.StringVar(&listenAddress, "listen-address", "localhost:9001", "address for godoc to listen on while scraping pages")
 	flag.StringVar(&basePath, "base-path", "/", "site relative URL path with trailing slash")
 	flag.StringVar(&siteName, "site-name", "Documentation", "site name")
@@ -174,16 +177,16 @@ func main() {
 		return strings.ToLower(pkgs[i]) < strings.ToLower(pkgs[j])
 	})
 
-	if verbose {
-		log.Println("Copying docs...")
-	}
-
 	go func() {
 		var (
 			res *http.Response
 			err error
 		)
 		for _, pkg := range pkgs {
+			if verbose {
+				log.Printf("Copying %s docs...", pkg)
+			}
+
 			// Rely on timeout to break loop
 			for {
 				res, err = http.Get(fmt.Sprintf("http://%s/pkg/%s/", listenAddress, pkg))
@@ -230,16 +233,16 @@ func main() {
 
 	// Write source files
 
-	if verbose {
-		log.Println("Copying sources...")
-	}
-
 	err = os.MkdirAll(path.Join(outDir, "src"), 0755)
 	if err != nil {
 		log.Fatalf("failed to make directory lib: %s", err)
 	}
 
 	for _, pkg := range filterPkgs {
+		if verbose {
+			log.Printf("Copying %s sources...", pkg)
+		}
+
 		tmpDir := os.TempDir()
 		// TODO Handle temp directory not existing
 		buf.Reset()
@@ -349,7 +352,7 @@ func main() {
 	writeIndex(&buf, outDir, basePath, siteName, pkgs, filterPkgs)
 
 	if verbose {
-		log.Printf("Generated documentation in %s", time.Since(timeStarted).Round(time.Second))
+		log.Printf("Generated documentation in %s.", time.Since(timeStarted).Round(time.Second))
 	}
 }
 

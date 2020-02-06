@@ -59,7 +59,6 @@ func updatePage(doc *goquery.Document, basePath string, siteName string) {
 		if strings.ContainsRune(importPathDisplayText, '.') && strings.HasPrefix(importPathDisplayText, `import "`) && strings.HasSuffix(importPathDisplayText, `"`) {
 			importPath := importPathDisplayText[8 : len(importPathDisplayText)-1]
 			importPathDisplay.SetHtml(fmt.Sprintf(`import "<a href="https://` + importPath + `" target="_blank">` + importPath + `</a>"`))
-			log.Println(importPathDisplay.Text())
 		}
 	}
 
