@@ -257,7 +257,7 @@ func main() {
 			continue // This is expected for packages without source files
 		}
 
-		sourceFiles := strings.Split(buf.String(), "\n")
+		sourceFiles := append(strings.Split(buf.String(), "\n"), "index.html")
 		for _, sourceFile := range sourceFiles {
 			sourceFile = strings.TrimSpace(sourceFile)
 			if sourceFile == "" {
@@ -280,6 +280,13 @@ func main() {
 
 			updatePage(doc, basePath, siteName)
 
+			doc.Find(".layout").First().Find("a").Each(func(_ int, selection *goquery.Selection) {
+				href := selection.AttrOr("href", "")
+				if !strings.HasSuffix(href, ".") && !strings.HasSuffix(href, "/") && !strings.HasSuffix(href, ".html") {
+					selection.SetAttr("href", href+".html")
+				}
+			})
+
 			pkgSrcPath := path.Join(outDir, "src", pkg)
 
 			err = os.MkdirAll(pkgSrcPath, 0755)
@@ -292,7 +299,12 @@ func main() {
 			if err != nil {
 				return
 			}
-			err = ioutil.WriteFile(path.Join(pkgSrcPath, sourceFile+".html"), buf.Bytes(), 0755)
+
+			outFileName := sourceFile
+			if !strings.HasSuffix(outFileName, ".html") {
+				outFileName += ".html"
+			}
+			err = ioutil.WriteFile(path.Join(pkgSrcPath, outFileName), buf.Bytes(), 0755)
 			if err != nil {
 				log.Fatalf("failed to write docs for %s: %s", pkg, err)
 			}
