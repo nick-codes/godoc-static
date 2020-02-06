@@ -1,5 +1,4 @@
 # godoc-static
-[![GoDoc](https://gitlab.com/tslocum/godoc-static/raw/master/badge.svg)](https://docs.rocketnine.space/gitlab.com/tslocum/godoc-static)
 [![CI status](https://gitlab.com/tslocum/godoc-static/badges/master/pipeline.svg)](https://gitlab.com/tslocum/godoc-static/commits/master)
 [![Donate](https://img.shields.io/liberapay/receives/rocketnine.space.svg?logo=liberapay)](https://liberapay.com/rocketnine.space)
 

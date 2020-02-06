@@ -53,6 +53,16 @@ func updatePage(doc *goquery.Document, basePath string, siteName string) {
 
 	doc.Find("#topbar").First().SetHtml(topBar(basePath, siteName))
 
+	importPathDisplay := doc.Find("#short-nav").First().Find("code").First()
+	if importPathDisplay.Length() > 0 {
+		importPathDisplayText := importPathDisplay.Text()
+		if strings.ContainsRune(importPathDisplayText, '.') && strings.HasPrefix(importPathDisplayText, `import "`) && strings.HasSuffix(importPathDisplayText, `"`) {
+			importPath := importPathDisplayText[8 : len(importPathDisplayText)-1]
+			importPathDisplay.SetHtml(fmt.Sprintf(`import "<a href="https://` + importPath + `" target="_blank">` + importPath + `</a>"`))
+			log.Println(importPathDisplay.Text())
+		}
+	}
+
 	doc.Find("a").Each(func(_ int, selection *goquery.Selection) {
 		href := selection.AttrOr("href", "")
 		if strings.HasPrefix(href, "/src/") || strings.HasPrefix(href, "/pkg/") {
@@ -116,18 +126,6 @@ func updatePage(doc *goquery.Document, basePath string, siteName string) {
 		}
 	})
 
-	scriptTag := &html.Node{
-		Type:     html.ElementNode,
-		DataAtom: atom.Script,
-		Data:     "script",
-		Attr: []html.Attribute{
-			{Key: "type", Val: "text/javascript"},
-			{Key: "src", Val: basePath + "lib/godoc-static.js"},
-		},
-	}
-
-	doc.Find("body").AppendNodes(scriptTag)
-
 	doc.Find("#footer").Last().Remove()
 }
 
@@ -137,9 +135,8 @@ func writeIndex(buf *bytes.Buffer, outDir string, basePath string, siteName stri
 		index = "/index.html"
 	}
 
-	var b bytes.Buffer
-
-	b.WriteString(`<!DOCTYPE html>
+	buf.Reset()
+	buf.WriteString(`<!DOCTYPE html>
 <html>
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
@@ -160,10 +157,10 @@ func writeIndex(buf *bytes.Buffer, outDir string, basePath string, siteName stri
 `)
 
 	if siteDescription != "" {
-		b.WriteString(siteDescription)
+		buf.WriteString(siteDescription)
 	}
 
-	b.WriteString(`
+	buf.WriteString(`
 <h1>
 	Packages
 </h1>
@@ -177,14 +174,15 @@ func writeIndex(buf *bytes.Buffer, outDir string, basePath string, siteName stri
 
 	var padding int
 	var lastPkg string
+	var pkgBuf bytes.Buffer
 	for _, pkg := range pkgs {
-		buf.Reset()
+		pkgBuf.Reset()
 		listCmd := exec.Command("go", "list", "-find", "-f", `{{ .Doc }}`, pkg)
 		listCmd.Dir = os.TempDir()
 		listCmd.SysProcAttr = &syscall.SysProcAttr{
 			Pdeathsig: syscall.SIGKILL,
 		}
-		listCmd.Stdout = buf
+		listCmd.Stdout = &pkgBuf
 
 		_ = listCmd.Run() // Ignore error
 
@@ -211,32 +209,31 @@ func writeIndex(buf *bytes.Buffer, outDir string, basePath string, siteName stri
 				break
 			}
 		}
-		b.WriteString(`
+		buf.WriteString(`
 		<tr>
 			<td class="pkg-name" style="padding-left: ` + strconv.Itoa(padding) + `px;">`)
 		if !linkPackage {
-			b.WriteString(pkgLabel)
+			buf.WriteString(pkgLabel)
 		} else {
-			b.WriteString(`<a href="` + pkg + index + `">` + pkgLabel + `</a>`)
+			buf.WriteString(`<a href="` + pkg + index + `">` + pkgLabel + `</a>`)
 		}
-		b.WriteString(`</td>
+		buf.WriteString(`</td>
 			<td class="pkg-synopsis">
-				` + buf.String() + `
+				` + pkgBuf.String() + `
 			</td>
 		</tr>
 `)
 	}
-	b.WriteString(`
+	buf.WriteString(`
 	</table>
 </div>
 </div>
 </div>
-<script type="text/javascript" src="` + basePath + `lib/godoc-static.js"></script>
 </body>
 </html>
 `)
 
-	err := ioutil.WriteFile(path.Join(outDir, "index.html"), b.Bytes(), 0755)
+	err := ioutil.WriteFile(path.Join(outDir, "index.html"), buf.Bytes(), 0755)
 	if err != nil {
 		log.Fatalf("failed to write index: %s", err)
 	}
