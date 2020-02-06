@@ -247,7 +247,20 @@ func main() {
 		// TODO Handle temp directory not existing
 		buf.Reset()
 
-		listCmd := exec.Command("go", "list", "-find", "-f", `{{ join .GoFiles "\n" }}`, pkg)
+		listCmd := exec.Command("go", "list", "-find", "-f",
+			`{{ join .GoFiles "\n" }}`+"\n"+
+				`{{ join .CgoFiles "\n" }}`+"\n"+
+				`{{ join .CFiles "\n" }}`+"\n"+
+				`{{ join .CXXFiles "\n" }}`+"\n"+
+				`{{ join .MFiles "\n" }}`+"\n"+
+				`{{ join .HFiles "\n" }}`+"\n"+
+				`{{ join .FFiles "\n" }}`+"\n"+
+				`{{ join .SFiles "\n" }}`+"\n"+
+				`{{ join .SwigFiles "\n" }}`+"\n"+
+				`{{ join .SwigCXXFiles "\n" }}`+"\n"+
+				`{{ join .TestGoFiles "\n" }}`+"\n"+
+				`{{ join .XTestGoFiles "\n" }}`,
+			pkg)
 		listCmd.Dir = tmpDir
 		listCmd.SysProcAttr = &syscall.SysProcAttr{
 			Pdeathsig: syscall.SIGKILL,
