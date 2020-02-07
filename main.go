@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -9,11 +10,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -23,11 +24,6 @@ import (
 	"golang.org/x/net/html"
 )
 
-const additionalCSS = `
-details { margin-top: 20px; }
-summary { margin-left: 20px; cursor: pointer; }
-`
-
 var (
 	listenAddress       string
 	basePath            string
@@ -36,7 +32,10 @@ var (
 	siteDescriptionFile string
 	linkIndex           bool
 	outDir              string
+	excludePackages     string
 	verbose             bool
+
+	godoc *exec.Cmd
 )
 
 func main() {
@@ -50,20 +49,31 @@ func main() {
 	flag.StringVar(&siteDescriptionFile, "site-description-file", "", "path to markdown file containing site description")
 	flag.BoolVar(&linkIndex, "link-index", false, "set link targets to index.html instead of folder")
 	flag.StringVar(&outDir, "out", "", "site directory")
+	flag.StringVar(&excludePackages, "exclude", "", "list of packages to exclude from index")
 	flag.BoolVar(&verbose, "verbose", false, "enable verbose logging")
 	flag.Parse()
 
+	err := run()
+	if godoc != nil {
+		godoc.Process.Kill()
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	var buf bytes.Buffer
 	timeStarted := time.Now()
 
 	if outDir == "" {
-		log.Fatal("--out must be set")
+		return errors.New("--out must be set")
 	}
 
 	if siteDescriptionFile != "" {
 		siteDescriptionBytes, err := ioutil.ReadFile(siteDescriptionFile)
 		if err != nil {
-			log.Fatalf("failed to read site description file %s: %s", siteDescriptionFile, err)
+			return fmt.Errorf("failed to read site description file %s: %s", siteDescriptionFile, err)
 		}
 		siteDescription = string(siteDescriptionBytes)
 	}
@@ -81,7 +91,7 @@ func main() {
 		buf.Reset()
 		err := markdown.Convert([]byte(siteDescription), &buf)
 		if err != nil {
-			log.Fatalf("failed to render site description markdown: %s", err)
+			return fmt.Errorf("failed to render site description markdown: %s", err)
 		}
 		siteDescription = buf.String()
 	}
@@ -90,25 +100,26 @@ func main() {
 		log.Println("Starting godoc...")
 	}
 
-	cmd := exec.Command("godoc", fmt.Sprintf("-http=%s", listenAddress))
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Pdeathsig: syscall.SIGKILL,
-	}
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	godoc = exec.Command("godoc", fmt.Sprintf("-http=%s", listenAddress))
+	godoc.Stdin = os.Stdin
+	godoc.Stdout = os.Stdout
+	godoc.Stderr = os.Stderr
+	setDeathSignal(godoc)
 
-	err := cmd.Start()
+	err := godoc.Start()
 	if err != nil {
-		log.Fatalf("failed to execute godoc: %s", err)
+		return fmt.Errorf("failed to execute godoc: %s", err)
 	}
 
-	// Allow godoc to initialize
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		<-c
+		godoc.Process.Kill()
+		os.Exit(1)
+	}()
 
-	time.Sleep(3 * time.Second)
-
-	done := make(chan struct{})
-	timeout := time.After(15 * time.Second)
+	godocStarted := time.Now()
 
 	pkgs := flag.Args()
 
@@ -123,16 +134,14 @@ func main() {
 
 		newPkgs = append(newPkgs, pkg)
 
-		listCmd := exec.Command("go", "list", "-find", "-f", `{{ .Dir }}`, pkg)
-		listCmd.Dir = os.TempDir()
-		listCmd.SysProcAttr = &syscall.SysProcAttr{
-			Pdeathsig: syscall.SIGKILL,
-		}
-		listCmd.Stdout = &buf
+		cmd := exec.Command("go", "list", "-find", "-f", `{{ .Dir }}`, pkg)
+		cmd.Dir = os.TempDir()
+		cmd.Stdout = &buf
+		setDeathSignal(cmd)
 
-		err = listCmd.Run()
+		err = cmd.Run()
 		if err != nil {
-			log.Fatalf("failed to list source directory of package %s: %s", pkg, err)
+			return fmt.Errorf("failed to list source directory of package %s: %s", pkg, err)
 		}
 
 		pkgPath := strings.TrimSpace(buf.String())
@@ -152,7 +161,7 @@ func main() {
 				return nil
 			})
 			if err != nil {
-				log.Fatalf("failed to walk source directory of package %s: %s", pkg, err)
+				return fmt.Errorf("failed to walk source directory of package %s: %s", pkg, err)
 			}
 		}
 		buf.Reset()
@@ -160,7 +169,7 @@ func main() {
 	pkgs = uniqueStrings(newPkgs)
 
 	if len(pkgs) == 0 {
-		log.Fatal("failed to generate docs: provide the name of at least one package to generate documentation for")
+		return errors.New("failed to generate docs: provide the name of at least one package to generate documentation for")
 	}
 
 	filterPkgs := pkgs
@@ -176,6 +185,15 @@ func main() {
 	sort.Slice(pkgs, func(i, j int) bool {
 		return strings.ToLower(pkgs[i]) < strings.ToLower(pkgs[j])
 	})
+
+	// Allow godoc to initialize
+
+	if time.Since(godocStarted) < 3*time.Second {
+		time.Sleep((3 * time.Second) - time.Since(godocStarted))
+	}
+
+	done := make(chan error)
+	timeout := time.After(15 * time.Second)
 
 	go func() {
 		var (
@@ -198,7 +216,8 @@ func main() {
 			// Load the HTML document
 			doc, err := goquery.NewDocumentFromReader(res.Body)
 			if err != nil {
-				log.Fatalf("failed to get page of %s: %s", pkg, err)
+				done <- fmt.Errorf("failed to get page of %s: %s", pkg, err)
+				return
 			}
 
 			doc.Find("title").First().SetHtml(fmt.Sprintf("%s - %s", path.Base(pkg), siteName))
@@ -209,33 +228,39 @@ func main() {
 
 			err = os.MkdirAll(localPkgPath, 0755)
 			if err != nil {
-				log.Fatalf("failed to make directory %s: %s", localPkgPath, err)
+				done <- fmt.Errorf("failed to make directory %s: %s", localPkgPath, err)
+				return
 			}
 
 			buf.Reset()
 			err = html.Render(&buf, doc.Nodes[0])
 			if err != nil {
+				done <- fmt.Errorf("failed to render HTML: %s", err)
 				return
 			}
 			err = ioutil.WriteFile(path.Join(localPkgPath, "index.html"), buf.Bytes(), 0755)
 			if err != nil {
-				log.Fatalf("failed to write docs for %s: %s", pkg, err)
+				done <- fmt.Errorf("failed to write docs for %s: %s", pkg, err)
+				return
 			}
 		}
-		done <- struct{}{}
+		done <- nil
 	}()
 
 	select {
 	case <-timeout:
-		log.Fatal("godoc failed to start in time")
-	case <-done:
+		return errors.New("godoc failed to start in time")
+	case err = <-done:
+		if err != nil {
+			return fmt.Errorf("failed to copy docs: %s", err)
+		}
 	}
 
 	// Write source files
 
 	err = os.MkdirAll(path.Join(outDir, "src"), 0755)
 	if err != nil {
-		log.Fatalf("failed to make directory lib: %s", err)
+		return fmt.Errorf("failed to make directory lib: %s", err)
 	}
 
 	for _, pkg := range filterPkgs {
@@ -247,7 +272,7 @@ func main() {
 		// TODO Handle temp directory not existing
 		buf.Reset()
 
-		listCmd := exec.Command("go", "list", "-find", "-f",
+		cmd := exec.Command("go", "list", "-find", "-f",
 			`{{ join .GoFiles "\n" }}`+"\n"+
 				`{{ join .CgoFiles "\n" }}`+"\n"+
 				`{{ join .CFiles "\n" }}`+"\n"+
@@ -261,15 +286,13 @@ func main() {
 				`{{ join .TestGoFiles "\n" }}`+"\n"+
 				`{{ join .XTestGoFiles "\n" }}`,
 			pkg)
-		listCmd.Dir = tmpDir
-		listCmd.SysProcAttr = &syscall.SysProcAttr{
-			Pdeathsig: syscall.SIGKILL,
-		}
-		listCmd.Stdout = &buf
+		cmd.Dir = tmpDir
+		cmd.Stdout = &buf
+		setDeathSignal(cmd)
 
-		err = listCmd.Run()
+		err = cmd.Run()
 		if err != nil {
-			//log.Fatalf("failed to list source files of package %s: %s", pkg, err)
+			//return fmt.Errorf("failed to list source files of package %s: %s", pkg, err)
 			continue // This is expected for packages without source files
 		}
 
@@ -283,13 +306,13 @@ func main() {
 			// Rely on timeout to break loop
 			res, err := http.Get(fmt.Sprintf("http://%s/src/%s/%s", listenAddress, pkg, sourceFile))
 			if err != nil {
-				log.Fatalf("failed to get source file page %s for package %s: %s", sourceFile, pkg, err)
+				return fmt.Errorf("failed to get source file page %s for package %s: %s", sourceFile, pkg, err)
 			}
 
 			// Load the HTML document
 			doc, err := goquery.NewDocumentFromReader(res.Body)
 			if err != nil {
-				log.Fatalf("failed to load document from page for package %s: %s", pkg, err)
+				return fmt.Errorf("failed to load document from page for package %s: %s", pkg, err)
 			}
 
 			doc.Find("title").First().SetHtml(fmt.Sprintf("%s - %s", path.Base(pkg), siteName))
@@ -307,13 +330,13 @@ func main() {
 
 			err = os.MkdirAll(pkgSrcPath, 0755)
 			if err != nil {
-				log.Fatalf("failed to make directory %s: %s", pkgSrcPath, err)
+				return fmt.Errorf("failed to make directory %s: %s", pkgSrcPath, err)
 			}
 
 			buf.Reset()
 			err = html.Render(&buf, doc.Nodes[0])
 			if err != nil {
-				return
+				return fmt.Errorf("failed to render HTML: %s", err)
 			}
 
 			outFileName := sourceFile
@@ -322,7 +345,7 @@ func main() {
 			}
 			err = ioutil.WriteFile(path.Join(pkgSrcPath, outFileName), buf.Bytes(), 0755)
 			if err != nil {
-				log.Fatalf("failed to write docs for %s: %s", pkg, err)
+				return fmt.Errorf("failed to write docs for %s: %s", pkg, err)
 			}
 		}
 	}
@@ -335,25 +358,25 @@ func main() {
 
 	err = os.MkdirAll(path.Join(outDir, "lib"), 0755)
 	if err != nil {
-		log.Fatalf("failed to make directory lib: %s", err)
+		return fmt.Errorf("failed to make directory lib: %s", err)
 	}
 
 	res, err := http.Get(fmt.Sprintf("http://%s/lib/godoc/style.css", listenAddress))
 	if err != nil {
-		log.Fatalf("failed to get syle.css: %s", err)
+		return fmt.Errorf("failed to get syle.css: %s", err)
 	}
 
 	content, err := ioutil.ReadAll(res.Body)
 	res.Body.Close()
 	if err != nil {
-		log.Fatalf("failed to get style.css: %s", err)
+		return fmt.Errorf("failed to get style.css: %s", err)
 	}
 
 	content = append(content, []byte("\n"+additionalCSS+"\n")...)
 
 	err = ioutil.WriteFile(path.Join(outDir, "lib", "style.css"), content, 0755)
 	if err != nil {
-		log.Fatalf("failed to write index: %s", err)
+		return fmt.Errorf("failed to write index: %s", err)
 	}
 
 	// Write index
@@ -362,11 +385,15 @@ func main() {
 		log.Println("Writing index...")
 	}
 
-	writeIndex(&buf, outDir, basePath, siteName, pkgs, filterPkgs)
+	err = writeIndex(&buf, outDir, basePath, siteName, pkgs, filterPkgs)
+	if err != nil {
+		return fmt.Errorf("failed to write index: %s", err)
+	}
 
 	if verbose {
 		log.Printf("Generated documentation in %s.", time.Since(timeStarted).Round(time.Second))
 	}
+	return nil
 }
 
 func uniqueStrings(strSlice []string) []string {

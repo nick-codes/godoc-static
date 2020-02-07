@@ -12,11 +12,15 @@ Generate static Go documentation
 
 Install `godoc-static`:
 
-`go get gitlab.com/tslocum/godoc-static` 
+```bash
+go get gitlab.com/tslocum/godoc-static
+```
 
 Also install `godoc`:
 
-`go get golang.org/x/tools/cmd/godoc` 
+```bash
+go get golang.org/x/tools/cmd/godoc
+``` 
 
 ## Documentation
 
@@ -26,11 +30,21 @@ Execute `godoc-static` with the `-help` flag for more information.
 
 Generate documentation for `archive`, `fmt` and `net/http` targeting `https://docs.rocketnine.space`:
 
-`godoc-static -base-path=/ -site-name="Rocket Nine Labs Documentation" -site-description="Welcome!" -out=/home/user/sites/docs archive fmt net/http`
+```bash
+godoc-static -base-path=/ -site-name="Rocket Nine Labs Documentation" \
+    -site-description="Welcome!" \
+    -out=/home/user/sites/docs \
+    archive fmt net/http
+```
 
 Targeting `https://rocketnine.space/docs/`:
 
-`godoc-static -base-path=/docs/ -site-name="Rocket Nine Labs Documentation" -site-description-file=/home/user/sitefiles/description.md -out=/home/user/sites/docs archive fmt net/http`
+```bash
+godoc-static -base-path=/docs/ -site-name="Rocket Nine Labs Documentation" \
+    -site-description-file=/home/user/sitefiles/description.md \
+    -out=/home/user/sites/docs \
+    archive fmt net/http
+```
 
 ## Support
 

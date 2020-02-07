@@ -4,19 +4,21 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"path"
 	"strconv"
 	"strings"
-	"syscall"
-
-	"golang.org/x/net/html"
-	"golang.org/x/net/html/atom"
 
 	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
+
+const additionalCSS = `
+details { margin-top: 20px; }
+summary { margin-left: 20px; cursor: pointer; }
+`
 
 func topBar(basePath string, siteName string) string {
 	var index string
@@ -128,7 +130,7 @@ func updatePage(doc *goquery.Document, basePath string, siteName string) {
 	doc.Find("#footer").Last().Remove()
 }
 
-func writeIndex(buf *bytes.Buffer, outDir string, basePath string, siteName string, pkgs []string, filterPkgs []string) {
+func writeIndex(buf *bytes.Buffer, outDir string, basePath string, siteName string, pkgs []string, filterPkgs []string) error {
 	var index string
 	if linkIndex {
 		index = "/index.html"
@@ -174,16 +176,22 @@ func writeIndex(buf *bytes.Buffer, outDir string, basePath string, siteName stri
 	var padding int
 	var lastPkg string
 	var pkgBuf bytes.Buffer
+	excludePackagesSplit := strings.Split(excludePackages, " ")
+PACKAGEINDEX:
 	for _, pkg := range pkgs {
-		pkgBuf.Reset()
-		listCmd := exec.Command("go", "list", "-find", "-f", `{{ .Doc }}`, pkg)
-		listCmd.Dir = os.TempDir()
-		listCmd.SysProcAttr = &syscall.SysProcAttr{
-			Pdeathsig: syscall.SIGKILL,
+		for _, excludePackage := range excludePackagesSplit {
+			if pkg == excludePackage || strings.HasPrefix(pkg, excludePackage+"/") {
+				continue PACKAGEINDEX
+			}
 		}
-		listCmd.Stdout = &pkgBuf
 
-		_ = listCmd.Run() // Ignore error
+		pkgBuf.Reset()
+		cmd := exec.Command("go", "list", "-find", "-f", `{{ .Doc }}`, pkg)
+		cmd.Dir = os.TempDir()
+		cmd.Stdout = &pkgBuf
+		setDeathSignal(cmd)
+
+		cmd.Run() // Ignore error
 
 		pkgLabel := pkg
 		if lastPkg != "" {
@@ -232,8 +240,5 @@ func writeIndex(buf *bytes.Buffer, outDir string, basePath string, siteName stri
 </html>
 `)
 
-	err := ioutil.WriteFile(path.Join(outDir, "index.html"), buf.Bytes(), 0755)
-	if err != nil {
-		log.Fatalf("failed to write index: %s", err)
-	}
+	return ioutil.WriteFile(path.Join(outDir, "index.html"), buf.Bytes(), 0755)
 }
