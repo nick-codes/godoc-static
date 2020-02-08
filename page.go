@@ -60,7 +60,34 @@ func updatePage(doc *goquery.Document, basePath string, siteName string) {
 		importPathDisplayText := importPathDisplay.Text()
 		if strings.ContainsRune(importPathDisplayText, '.') && strings.HasPrefix(importPathDisplayText, `import "`) && strings.HasSuffix(importPathDisplayText, `"`) {
 			importPath := importPathDisplayText[8 : len(importPathDisplayText)-1]
-			importPathDisplay.SetHtml(fmt.Sprintf(`import "<a href="https://` + importPath + `" target="_blank">` + importPath + `</a>"`))
+
+			browseImportPath := importPath
+			var browseInsert string
+			if strings.HasPrefix(importPath, "gitlab.com/") {
+				browseInsert = "/-/tree/master"
+			} else if strings.HasPrefix(importPath, "github.com/") || strings.HasPrefix(importPath, "git.sr.ht/") {
+				browseInsert = "/tree/master"
+			} else if strings.HasPrefix(importPath, "bitbucket.org/") {
+				browseInsert = "/src/master"
+			}
+			if browseInsert != "" {
+				var insertPos int
+				var found int
+				for i, c := range importPath {
+					if c == '/' {
+						found++
+						if found == 3 {
+							insertPos = i
+							break
+						}
+					}
+				}
+				if insertPos > 0 {
+					browseImportPath = importPath[0:insertPos] + browseInsert + importPath[insertPos:]
+				}
+			}
+
+			importPathDisplay.SetHtml(fmt.Sprintf(`import "<a href="https://` + browseImportPath + `" target="_blank">` + importPath + `</a>"`))
 		}
 	}
 

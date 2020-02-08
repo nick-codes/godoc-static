@@ -1,3 +1,6 @@
+0.1.4:
+- Rewrite links to subpackage import paths
+
 0.1.3:
 - Add --exclude flag
 - Fix compilation on Windows
