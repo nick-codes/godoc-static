@@ -30,6 +30,8 @@ var (
 	siteName            string
 	siteDescription     string
 	siteDescriptionFile string
+	siteFooter          string
+	siteFooterFile      string
 	linkIndex           bool
 	outDir              string
 	excludePackages     string
@@ -47,6 +49,8 @@ func main() {
 	flag.StringVar(&siteName, "site-name", "Documentation", "site name")
 	flag.StringVar(&siteDescription, "site-description", "", "site description (markdown-enabled)")
 	flag.StringVar(&siteDescriptionFile, "site-description-file", "", "path to markdown file containing site description")
+	flag.StringVar(&siteFooter, "site-footer", "", "site footer (markdown-enabled)")
+	flag.StringVar(&siteFooterFile, "site-footer-file", "", "path to markdown file containing site footer")
 	flag.BoolVar(&linkIndex, "link-index", false, "set link targets to index.html instead of folder")
 	flag.StringVar(&outDir, "out", "", "site directory")
 	flag.StringVar(&excludePackages, "exclude", "", "list of packages to exclude from index")
@@ -94,6 +98,38 @@ func run() error {
 			return fmt.Errorf("failed to render site description markdown: %s", err)
 		}
 		siteDescription = buf.String()
+	}
+
+	if siteFooterFile != "" {
+		siteFooterBytes, err := ioutil.ReadFile(siteFooterFile)
+		if err != nil {
+			return fmt.Errorf("failed to read site footer file %s: %s", siteFooterFile, err)
+		}
+		siteFooter = string(siteFooterBytes)
+	}
+
+	if siteFooter != "" {
+		markdown := goldmark.New(
+			goldmark.WithRendererOptions(
+				gmhtml.WithUnsafe(),
+			),
+			goldmark.WithExtensions(
+				extension.NewLinkify(),
+			),
+		)
+
+		buf.Reset()
+		err := markdown.Convert([]byte(siteFooter), &buf)
+		if err != nil {
+			return fmt.Errorf("failed to render site footer markdown: %s", err)
+		}
+		siteFooter = buf.String()
+	}
+
+	if siteFooter != "" {
+		siteFooter += "<p>" + footerText + "</p>"
+	} else {
+		siteFooter = footerText
 	}
 
 	if verbose {

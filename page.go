@@ -18,7 +18,10 @@ import (
 const additionalCSS = `
 details { margin-top: 20px; }
 summary { margin-left: 20px; cursor: pointer; }
+#footer > p, #footer > li {	max-width: none; word-wrap: normal; }
 `
+
+const footerText = `Documentation generated with <a href="https://godoc.org/golang.org/x/tools/godoc" target="_blank">godoc</a> + <a href="https://gitlab.com/tslocum/godoc-static" target="_blank">godoc-static</a>`
 
 func topBar(basePath string, siteName string) string {
 	var index string
@@ -154,7 +157,7 @@ func updatePage(doc *goquery.Document, basePath string, siteName string) {
 		}
 	})
 
-	doc.Find("#footer").Last().Remove()
+	doc.Find("#footer").Last().SetHtml(siteFooter)
 }
 
 func writeIndex(buf *bytes.Buffer, outDir string, basePath string, siteName string, pkgs []string, filterPkgs []string) error {
@@ -261,6 +264,7 @@ PACKAGEINDEX:
 	buf.WriteString(`
 	</table>
 </div>
+<div id="footer">` + siteFooter + `</div>
 </div>
 </div>
 </body>

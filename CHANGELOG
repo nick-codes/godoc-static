@@ -1,4 +1,5 @@
 0.1.4:
+- Add --site-footer flag
 - Rewrite links to subpackage import paths
 
 0.1.3:
