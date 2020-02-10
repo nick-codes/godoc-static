@@ -24,17 +24,62 @@ go get golang.org/x/tools/cmd/godoc
 
 ## Documentation
 
-Execute `godoc-static` with the `-help` flag for more information.
+Execute `godoc-static` supplying at least one package name to generate
+documentation for specific packages:
+
+```bash
+godoc-static -destination=/home/user/sites/docs fmt net/http
+```
+
+When no package names are supplied, documentation is generated for packages
+listed by `go list ...` instead.
+
+Missing packages are not downloaded automatically.
+
+### Options
+
+#### -base-path
+Site relative URL path with trailing slash.
+
+#### -destination
+Path to write site to.
+
+#### -exclude
+Space-separated list of packages to exclude from the index.
+
+#### -link-index
+Link to index.html instead of folder.
+
+#### -listen-address
+Address for godoc to listen on while scraping pages.
+
+#### -site-description
+Site description (markdown-enabled).
+
+#### -site-description-file
+Path to markdown file containing site description.
+
+#### -site-footer
+Site footer (markdown-enabled).
+
+#### -site-footer-file
+Path to markdown file containing site footer.
+
+#### -site-name
+Site name.
+
+#### -verbose
+Enable verbose logging.
 
 ### Usage examples
 
-Generate documentation for `archive`, `fmt` and `net/http` targeting `https://docs.rocketnine.space`:
+Generate documentation for `archive`, `net/http` and `gitlab.com/tslocum/cview` targeting `https://docs.rocketnine.space`:
 
 ```bash
 godoc-static -base-path=/ -site-name="Rocket Nine Labs Documentation" \
     -site-description="Welcome!" \
-    -out=/home/user/sites/docs \
-    archive fmt net/http
+    -destination=/home/user/sites/docs \
+    archive net/http gitlab.com/tslocum/cview
 ```
 
 Targeting `https://rocketnine.space/docs/`:
@@ -42,8 +87,8 @@ Targeting `https://rocketnine.space/docs/`:
 ```bash
 godoc-static -base-path=/docs/ -site-name="Rocket Nine Labs Documentation" \
     -site-description-file=/home/user/sitefiles/description.md \
-    -out=/home/user/sites/docs \
-    archive fmt net/http
+    -destination=/home/user/sites/docs \
+    archive net/http gitlab.com/tslocum/cview
 ```
 
 ## Support

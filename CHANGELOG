@@ -1,3 +1,6 @@
+0.1.5:
+- Allow no packages to be specified
+
 0.1.4:
 - Add --site-footer flag
 - Rewrite links to subpackage import paths

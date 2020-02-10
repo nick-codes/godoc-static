@@ -32,8 +32,8 @@ var (
 	siteDescriptionFile string
 	siteFooter          string
 	siteFooterFile      string
+	siteDestination     string
 	linkIndex           bool
-	outDir              string
 	excludePackages     string
 	verbose             bool
 
@@ -51,8 +51,8 @@ func main() {
 	flag.StringVar(&siteDescriptionFile, "site-description-file", "", "path to markdown file containing site description")
 	flag.StringVar(&siteFooter, "site-footer", "", "site footer (markdown-enabled)")
 	flag.StringVar(&siteFooterFile, "site-footer-file", "", "path to markdown file containing site footer")
+	flag.StringVar(&siteDestination, "destination", "", "path to write site to")
 	flag.BoolVar(&linkIndex, "link-index", false, "set link targets to index.html instead of folder")
-	flag.StringVar(&outDir, "out", "", "site directory")
 	flag.StringVar(&excludePackages, "exclude", "", "list of packages to exclude from index")
 	flag.BoolVar(&verbose, "verbose", false, "enable verbose logging")
 	flag.Parse()
@@ -70,8 +70,8 @@ func run() error {
 	var buf bytes.Buffer
 	timeStarted := time.Now()
 
-	if outDir == "" {
-		return errors.New("--out must be set")
+	if siteDestination == "" {
+		return errors.New("--destination must be set")
 	}
 
 	if siteDescriptionFile != "" {
@@ -159,8 +159,23 @@ func run() error {
 
 	pkgs := flag.Args()
 
-	var newPkgs []string
+	if len(pkgs) == 0 || (len(pkgs) == 1 && pkgs[0] == "") {
+		buf.Reset()
 
+		cmd := exec.Command("go", "list", "...")
+		cmd.Dir = os.TempDir()
+		cmd.Stdout = &buf
+		setDeathSignal(cmd)
+
+		err = cmd.Run()
+		if err != nil {
+			return fmt.Errorf("failed to list system packages: %s", err)
+		}
+
+		pkgs = strings.Split(strings.TrimSpace(buf.String()), "\n")
+	}
+
+	var newPkgs []string
 	for _, pkg := range pkgs {
 		if strings.TrimSpace(pkg) == "" {
 			continue
@@ -260,7 +275,7 @@ func run() error {
 
 			updatePage(doc, basePath, siteName)
 
-			localPkgPath := path.Join(outDir, pkg)
+			localPkgPath := path.Join(siteDestination, pkg)
 
 			err = os.MkdirAll(localPkgPath, 0755)
 			if err != nil {
@@ -294,7 +309,7 @@ func run() error {
 
 	// Write source files
 
-	err = os.MkdirAll(path.Join(outDir, "src"), 0755)
+	err = os.MkdirAll(path.Join(siteDestination, "src"), 0755)
 	if err != nil {
 		return fmt.Errorf("failed to make directory lib: %s", err)
 	}
@@ -362,7 +377,7 @@ func run() error {
 				}
 			})
 
-			pkgSrcPath := path.Join(outDir, "src", pkg)
+			pkgSrcPath := path.Join(siteDestination, "src", pkg)
 
 			err = os.MkdirAll(pkgSrcPath, 0755)
 			if err != nil {
@@ -392,7 +407,7 @@ func run() error {
 		log.Println("Copying style.css...")
 	}
 
-	err = os.MkdirAll(path.Join(outDir, "lib"), 0755)
+	err = os.MkdirAll(path.Join(siteDestination, "lib"), 0755)
 	if err != nil {
 		return fmt.Errorf("failed to make directory lib: %s", err)
 	}
@@ -410,7 +425,7 @@ func run() error {
 
 	content = append(content, []byte("\n"+additionalCSS+"\n")...)
 
-	err = ioutil.WriteFile(path.Join(outDir, "lib", "style.css"), content, 0755)
+	err = ioutil.WriteFile(path.Join(siteDestination, "lib", "style.css"), content, 0755)
 	if err != nil {
 		return fmt.Errorf("failed to write index: %s", err)
 	}
@@ -421,7 +436,7 @@ func run() error {
 		log.Println("Writing index...")
 	}
 
-	err = writeIndex(&buf, outDir, basePath, siteName, pkgs, filterPkgs)
+	err = writeIndex(&buf, siteDestination, basePath, siteName, pkgs, filterPkgs)
 	if err != nil {
 		return fmt.Errorf("failed to write index: %s", err)
 	}
