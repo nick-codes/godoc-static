@@ -2,6 +2,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"errors"
 	"flag"
@@ -27,18 +28,19 @@ import (
 
 var (
 	listenAddress       string
-	basePath            string
 	siteName            string
 	siteDescription     string
 	siteDescriptionFile string
 	siteFooter          string
 	siteFooterFile      string
 	siteDestination     string
+	siteZip             string
 	linkIndex           bool
 	excludePackages     string
 	verbose             bool
 
-	godoc *exec.Cmd
+	godoc  *exec.Cmd
+	outZip *zip.Writer
 )
 
 func main() {
@@ -46,13 +48,13 @@ func main() {
 	log.SetFlags(0)
 
 	flag.StringVar(&listenAddress, "listen-address", "localhost:9001", "address for godoc to listen on while scraping pages")
-	flag.StringVar(&basePath, "base-path", "/", "site relative URL path with trailing slash")
 	flag.StringVar(&siteName, "site-name", "Documentation", "site name")
 	flag.StringVar(&siteDescription, "site-description", "", "site description (markdown-enabled)")
 	flag.StringVar(&siteDescriptionFile, "site-description-file", "", "path to markdown file containing site description")
 	flag.StringVar(&siteFooter, "site-footer", "", "site footer (markdown-enabled)")
 	flag.StringVar(&siteFooterFile, "site-footer-file", "", "path to markdown file containing site footer")
-	flag.StringVar(&siteDestination, "destination", "", "path to write site to")
+	flag.StringVar(&siteDestination, "destination", "", "path to write site HTML")
+	flag.StringVar(&siteZip, "zip", "docs.zip", "name of site ZIP file (blank to disable)")
 	flag.BoolVar(&linkIndex, "link-index", false, "set link targets to index.html instead of folder")
 	flag.StringVar(&excludePackages, "exclude", "", "list of packages to exclude from index")
 	flag.BoolVar(&verbose, "verbose", false, "enable verbose logging")
@@ -76,6 +78,28 @@ func getTmpDir() string {
 		}
 	}
 	return tmpDir
+}
+
+func writeFile(buf *bytes.Buffer, fileDir string, fileName string) error {
+	if outZip != nil {
+		fn := fileDir
+		if fn != "" {
+			fn += "/"
+		}
+		fn += fileName
+
+		outZipFile, err := outZip.Create(fn)
+		if err != nil {
+			return fmt.Errorf("failed to create zip file %s: %s", fn, err)
+		}
+
+		_, err = outZipFile.Write(buf.Bytes())
+		if err != nil {
+			return fmt.Errorf("failed to write zip file %s: %s", fn, err)
+		}
+	}
+
+	return ioutil.WriteFile(path.Join(siteDestination, fileDir, fileName), buf.Bytes(), 0755)
 }
 
 func run() error {
@@ -138,10 +162,15 @@ func run() error {
 		siteFooter = buf.String()
 	}
 
-	if siteFooter != "" {
-		siteFooter += "<p>" + footerText + "</p>"
-	} else {
-		siteFooter = footerText
+	if siteZip != "" {
+		outZipFile, err := os.Create(filepath.Join(siteDestination, siteZip))
+		if err != nil {
+			return fmt.Errorf("failed to create zip file %s: %s", filepath.Join(siteDestination, siteZip), err)
+		}
+		defer outZipFile.Close()
+
+		outZip = zip.NewWriter(outZipFile)
+		defer outZip.Close()
 	}
 
 	if verbose {
@@ -285,7 +314,7 @@ func run() error {
 
 			doc.Find("title").First().SetHtml(fmt.Sprintf("%s - %s", path.Base(pkg), siteName))
 
-			updatePage(doc, basePath, siteName)
+			updatePage(doc, relativeBasePath(pkg), siteName)
 
 			localPkgPath := path.Join(siteDestination, pkg)
 
@@ -301,7 +330,7 @@ func run() error {
 				done <- fmt.Errorf("failed to render HTML: %s", err)
 				return
 			}
-			err = ioutil.WriteFile(path.Join(localPkgPath, "index.html"), buf.Bytes(), 0755)
+			err = writeFile(&buf, pkg, "index.html")
 			if err != nil {
 				done <- fmt.Errorf("failed to write docs for %s: %s", pkg, err)
 				return
@@ -378,7 +407,7 @@ func run() error {
 
 			doc.Find("title").First().SetHtml(fmt.Sprintf("%s - %s", path.Base(pkg), siteName))
 
-			updatePage(doc, basePath, siteName)
+			updatePage(doc, relativeBasePath("src/"+pkg), siteName)
 
 			doc.Find(".layout").First().Find("a").Each(func(_ int, selection *goquery.Selection) {
 				href := selection.AttrOr("href", "")
@@ -404,7 +433,7 @@ func run() error {
 			if !strings.HasSuffix(outFileName, ".html") {
 				outFileName += ".html"
 			}
-			err = ioutil.WriteFile(path.Join(pkgSrcPath, outFileName), buf.Bytes(), 0755)
+			err = writeFile(&buf, "src/"+pkg, outFileName)
 			if err != nil {
 				return fmt.Errorf("failed to write docs for %s: %s", pkg, err)
 			}
@@ -427,17 +456,19 @@ func run() error {
 		return fmt.Errorf("failed to get syle.css: %s", err)
 	}
 
-	content, err := ioutil.ReadAll(res.Body)
+	buf.Reset()
+
+	_, err = buf.ReadFrom(res.Body)
 	res.Body.Close()
 	if err != nil {
 		return fmt.Errorf("failed to get style.css: %s", err)
 	}
 
-	content = append(content, []byte("\n"+additionalCSS+"\n")...)
+	buf.WriteString("\n" + additionalCSS)
 
-	err = ioutil.WriteFile(path.Join(siteDestination, "lib", "style.css"), content, 0755)
+	err = writeFile(&buf, "lib", "style.css")
 	if err != nil {
-		return fmt.Errorf("failed to write index: %s", err)
+		return fmt.Errorf("failed to write style.css: %s", err)
 	}
 
 	// Write index
@@ -446,7 +477,7 @@ func run() error {
 		log.Println("Writing index...")
 	}
 
-	err = writeIndex(&buf, siteDestination, basePath, siteName, pkgs, filterPkgs)
+	err = writeIndex(&buf, pkgs, filterPkgs)
 	if err != nil {
 		return fmt.Errorf("failed to write index: %s", err)
 	}
@@ -455,6 +486,17 @@ func run() error {
 		log.Printf("Generated documentation in %s.", time.Since(timeStarted).Round(time.Second))
 	}
 	return nil
+}
+
+func relativeBasePath(p string) string {
+	var r string
+	if p != "" {
+		r += "../"
+	}
+	for i := strings.Count(p, "/"); i > 0; i-- {
+		r += "../"
+	}
+	return r
 }
 
 func uniqueStrings(strSlice []string) []string {

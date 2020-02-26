@@ -38,22 +38,10 @@ Packages are not downloaded/updated automatically.
 
 ### Usage examples
 
-Generate documentation for `archive`, `net/http` and `gitlab.com/tslocum/cview` targeting `https://docs.rocketnine.space`:
+Generate documentation for `archive`, `net/http` and `gitlab.com/tslocum/cview`:
 
 ```bash
 godoc-static \
-    -base-path=/ \
-    -site-name="Rocket Nine Labs Documentation" \
-    -site-description="Welcome!" \
-    -destination=/home/user/sites/docs \
-    archive net/http gitlab.com/tslocum/cview
-```
-
-Targeting `https://rocketnine.space/docs/`:
-
-```bash
-godoc-static \
-    -base-path=/docs/ \
     -site-name="Rocket Nine Labs Documentation" \
     -site-description-file=/home/user/sitefiles/description.md \
     -destination=/home/user/sites/docs \
@@ -61,9 +49,6 @@ godoc-static \
 ```
 
 ### Options
-
-#### -base-path
-Site relative URL path with trailing slash.
 
 #### -destination
 Path to write site to.
@@ -95,6 +80,9 @@ Site name.
 #### -verbose
 Enable verbose logging.
 
+#### -zip
+Site ZIP file name.
+
 ## Support
 
-Please share issues/suggestions [here](https://gitlab.com/tslocum/godoc-static/issues).
+Please share issues and suggestions [here](https://gitlab.com/tslocum/godoc-static/issues).

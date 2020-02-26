@@ -1,4 +1,5 @@
 0.1.6:
+- Write documentation to docs.zip
 - Create temporary directory when missing
 
 0.1.5:
