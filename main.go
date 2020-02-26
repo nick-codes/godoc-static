@@ -1,3 +1,4 @@
+// Package godoc-static generates static Go documentation
 package main
 
 import (
@@ -64,6 +65,17 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func getTmpDir() string {
+	tmpDir := os.TempDir()
+	if _, err := os.Stat(tmpDir); os.IsNotExist(err) {
+		mkDirErr := os.MkdirAll(tmpDir, 0755)
+		if _, err = os.Stat(tmpDir); os.IsNotExist(err) {
+			log.Fatalf("failed to create missing temporary directory %s: %s", tmpDir, mkDirErr)
+		}
+	}
+	return tmpDir
 }
 
 func run() error {
@@ -237,7 +249,7 @@ func run() error {
 		return strings.ToLower(pkgs[i]) < strings.ToLower(pkgs[j])
 	})
 
-	// Allow godoc to initialize
+	// Allow some time for godoc to initialize
 
 	if time.Since(godocStarted) < 3*time.Second {
 		time.Sleep((3 * time.Second) - time.Since(godocStarted))
@@ -319,8 +331,6 @@ func run() error {
 			log.Printf("Copying %s sources...", pkg)
 		}
 
-		tmpDir := os.TempDir()
-		// TODO Handle temp directory not existing
 		buf.Reset()
 
 		cmd := exec.Command("go", "list", "-find", "-f",
@@ -337,7 +347,7 @@ func run() error {
 				`{{ join .TestGoFiles "\n" }}`+"\n"+
 				`{{ join .XTestGoFiles "\n" }}`,
 			pkg)
-		cmd.Dir = tmpDir
+		cmd.Dir = getTmpDir()
 		cmd.Stdout = &buf
 		setDeathSignal(cmd)
 

@@ -24,17 +24,41 @@ go get golang.org/x/tools/cmd/godoc
 
 ## Documentation
 
-Execute `godoc-static` supplying at least one package name to generate
-documentation for specific packages:
+To generate documentation for specific packages, execute `godoc-static`
+supplying at least one package name:
 
 ```bash
 godoc-static -destination=/home/user/sites/docs fmt net/http
 ```
 
-When no package names are supplied, documentation is generated for packages
-listed by `go list ...` instead.
+When no packages are supplied, documentation is generated for packages listed
+by `go list ...` instead.
 
-Missing packages are not downloaded automatically.
+Packages are not downloaded/updated automatically.
+
+### Usage examples
+
+Generate documentation for `archive`, `net/http` and `gitlab.com/tslocum/cview` targeting `https://docs.rocketnine.space`:
+
+```bash
+godoc-static \
+    -base-path=/ \
+    -site-name="Rocket Nine Labs Documentation" \
+    -site-description="Welcome!" \
+    -destination=/home/user/sites/docs \
+    archive net/http gitlab.com/tslocum/cview
+```
+
+Targeting `https://rocketnine.space/docs/`:
+
+```bash
+godoc-static \
+    -base-path=/docs/ \
+    -site-name="Rocket Nine Labs Documentation" \
+    -site-description-file=/home/user/sitefiles/description.md \
+    -destination=/home/user/sites/docs \
+    archive net/http gitlab.com/tslocum/cview
+```
 
 ### Options
 
@@ -70,26 +94,6 @@ Site name.
 
 #### -verbose
 Enable verbose logging.
-
-### Usage examples
-
-Generate documentation for `archive`, `net/http` and `gitlab.com/tslocum/cview` targeting `https://docs.rocketnine.space`:
-
-```bash
-godoc-static -base-path=/ -site-name="Rocket Nine Labs Documentation" \
-    -site-description="Welcome!" \
-    -destination=/home/user/sites/docs \
-    archive net/http gitlab.com/tslocum/cview
-```
-
-Targeting `https://rocketnine.space/docs/`:
-
-```bash
-godoc-static -base-path=/docs/ -site-name="Rocket Nine Labs Documentation" \
-    -site-description-file=/home/user/sitefiles/description.md \
-    -destination=/home/user/sites/docs \
-    archive net/http gitlab.com/tslocum/cview
-```
 
 ## Support
 
