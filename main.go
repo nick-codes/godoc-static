@@ -61,7 +61,7 @@ func main() {
 	flag.Parse()
 
 	err := run()
-	if godoc != nil {
+	if godoc != nil && godoc.Process != nil {
 		godoc.Process.Kill()
 	}
 	if err != nil {
@@ -185,7 +185,7 @@ func run() error {
 
 	err := godoc.Start()
 	if err != nil {
-		return fmt.Errorf("failed to execute godoc: %s", err)
+		return fmt.Errorf("failed to execute godoc: %s\ninstall godoc by running: go get golang.org/x/tools/cmd/godoc\nthen ensure ~/go/bin is in $PATH", err)
 	}
 
 	c := make(chan os.Signal, 1)

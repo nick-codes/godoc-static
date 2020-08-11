@@ -1,3 +1,6 @@
+0.1.7:
+- Print godoc installation instructions when it is not found
+
 0.1.6:
 - Write documentation to docs.zip
 - Create temporary directory when missing
