@@ -224,15 +224,7 @@ func writeIndex(buf *bytes.Buffer, pkgs []string, filterPkgs []string) error {
 	var padding int
 	var lastPkg string
 	var pkgBuf bytes.Buffer
-	excludePackagesSplit := strings.Split(excludePackages, " ")
-PACKAGEINDEX:
 	for _, pkg := range pkgs {
-		for _, excludePackage := range excludePackagesSplit {
-			if pkg == excludePackage || strings.HasPrefix(pkg, excludePackage+"/") {
-				continue PACKAGEINDEX
-			}
-		}
-
 		pkgBuf.Reset()
 		cmd := exec.Command("go", "list", "-find", "-f", `{{ .Doc }}`, pkg)
 		cmd.Dir = os.TempDir()
