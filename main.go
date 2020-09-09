@@ -510,6 +510,7 @@ func relativeBasePath(p string) string {
 	if p != "" {
 		r += "../"
 	}
+	p = filepath.ToSlash(p)
 	for i := strings.Count(p, "/"); i > 0; i-- {
 		r += "../"
 	}
