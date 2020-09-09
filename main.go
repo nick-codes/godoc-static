@@ -69,6 +69,21 @@ func main() {
 	}
 }
 
+func filterPkgsWithExcludes(pkgs []string) []string {
+	excludePackagesSplit := strings.Split(excludePackages, " ")
+	var tmpPkgs []string
+PACKAGEINDEX:
+	for _, pkg := range pkgs {
+		for _, excludePackage := range excludePackagesSplit {
+			if strings.Contains(pkg, "\\") || strings.Contains(pkg, "testdata") || strings.Contains(pkg, "internal") || pkg == "cmd" || pkg == excludePackage || strings.HasPrefix(pkg, excludePackage+"/") {
+				continue PACKAGEINDEX
+			}
+		}
+		tmpPkgs = append(tmpPkgs, pkg)
+	}
+	return tmpPkgs
+}
+
 func getTmpDir() string {
 	tmpDir := os.TempDir()
 	if _, err := os.Stat(tmpDir); os.IsNotExist(err) {
@@ -272,7 +287,7 @@ func run() error {
 			pkgs = append(pkgs, strings.Join(subPkgs[0:i+1], "/"))
 		}
 	}
-	pkgs = uniqueStrings(pkgs)
+	pkgs = filterPkgsWithExcludes(uniqueStrings(pkgs))
 
 	sort.Slice(pkgs, func(i, j int) bool {
 		return strings.ToLower(pkgs[i]) < strings.ToLower(pkgs[j])
@@ -354,6 +369,8 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to make directory lib: %s", err)
 	}
+
+	filterPkgs = filterPkgsWithExcludes(filterPkgs)
 
 	for _, pkg := range filterPkgs {
 		if verbose {
