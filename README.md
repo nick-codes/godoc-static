@@ -25,20 +25,22 @@ go get golang.org/x/tools/cmd/godoc
 ## Documentation
 
 To generate documentation for specific packages, execute `godoc-static`
-supplying at least one package name:
+supplying at least one package import path and/or absolute path:
 
 ```bash
-godoc-static -destination=/home/user/sites/docs fmt net/http
+godoc-static -destination=/home/user/sites/docs fmt net/http ~/awesomeproject
 ```
 
+When an import path is supplied, the package is sourced from `$GOPATH` or `$GOROOT`.
+
 When no packages are supplied, documentation is generated for packages listed
-by `go list ...` instead.
+by `go list ...`.
 
 Packages are not downloaded/updated automatically.
 
 ### Usage examples
 
-Generate documentation for `archive`, `net/http` and `gitlab.com/tslocum/cview`:
+Generate documentation for `archive`, `net/http` and `~/go/src/gitlab.com/tslocum/cview`:
 
 ```bash
 godoc-static \

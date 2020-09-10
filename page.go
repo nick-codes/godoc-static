@@ -227,6 +227,7 @@ func writeIndex(buf *bytes.Buffer, pkgs []string, filterPkgs []string) error {
 	for _, pkg := range pkgs {
 		pkgBuf.Reset()
 		cmd := exec.Command("go", "list", "-find", "-f", `{{ .Doc }}`, pkg)
+		cmd.Env = godocEnv
 		cmd.Dir = os.TempDir()
 		cmd.Stdout = &pkgBuf
 		setDeathSignal(cmd)

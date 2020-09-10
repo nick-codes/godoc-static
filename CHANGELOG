@@ -1,3 +1,8 @@
+0.1.8:
+- Improve Go module support
+- Filter internal, testdata and cmd packages from docs
+- Fix Windows support
+
 0.1.7:
 - Print godoc installation instructions when it is not found
 

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go/build"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -23,6 +24,7 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	gmhtml "github.com/yuin/goldmark/renderer/html"
+	"golang.org/x/mod/modfile"
 	"golang.org/x/net/html"
 )
 
@@ -39,8 +41,14 @@ var (
 	excludePackages     string
 	verbose             bool
 
-	godoc  *exec.Cmd
-	outZip *zip.Writer
+	goPath string
+
+	godoc         *exec.Cmd
+	godocEnv      []string
+	godocStartDir string
+	outZip        *zip.Writer
+
+	scanIncomplete = []byte(`<span class="alert" style="font-size:120%">Scan is not yet complete.`)
 )
 
 func main() {
@@ -117,9 +125,42 @@ func writeFile(buf *bytes.Buffer, fileDir string, fileName string) error {
 	return ioutil.WriteFile(path.Join(siteDestination, fileDir, fileName), buf.Bytes(), 0755)
 }
 
+func startGodoc(dir string) {
+	if dir == godocStartDir {
+		return // Already started
+	}
+	godocStartDir = dir
+
+	if godoc != nil {
+		godoc.Process.Kill()
+		godoc.Wait()
+	}
+
+	godoc = exec.Command("godoc", fmt.Sprintf("-http=%s", listenAddress))
+	godoc.Env = godocEnv
+	if dir == "" {
+		godoc.Dir = os.TempDir()
+	} else {
+		godoc.Dir = dir
+	}
+	godoc.Stdin = nil
+	godoc.Stdout = nil
+	godoc.Stderr = nil
+	setDeathSignal(godoc)
+
+	err := godoc.Start()
+	if err != nil {
+		log.Fatalf("failed to execute godoc: %s\ninstall godoc by running: go get golang.org/x/tools/cmd/godoc\nthen ensure ~/go/bin is in $PATH", err)
+	}
+}
+
 func run() error {
-	var buf bytes.Buffer
-	timeStarted := time.Now()
+	var (
+		timeStarted = time.Now()
+
+		buf bytes.Buffer
+		err error
+	)
 
 	if siteDestination == "" {
 		return errors.New("--destination must be set")
@@ -188,20 +229,22 @@ func run() error {
 		defer outZip.Close()
 	}
 
-	if verbose {
-		log.Println("Starting godoc...")
+	goPath = os.Getenv("GOPATH")
+	if goPath == "" {
+		goPath = build.Default.GOPATH
 	}
 
-	godoc = exec.Command("godoc", fmt.Sprintf("-http=%s", listenAddress))
-	godoc.Stdin = os.Stdin
-	godoc.Stdout = os.Stdout
-	godoc.Stderr = os.Stderr
-	setDeathSignal(godoc)
-
-	err := godoc.Start()
-	if err != nil {
-		return fmt.Errorf("failed to execute godoc: %s\ninstall godoc by running: go get golang.org/x/tools/cmd/godoc\nthen ensure ~/go/bin is in $PATH", err)
+	godocEnv = make([]string, len(os.Environ()))
+	copy(godocEnv, os.Environ())
+	for i, e := range godocEnv {
+		if strings.HasPrefix(e, "GO111MODULE=") {
+			godocEnv[i] = ""
+		}
 	}
+	godocEnv = append(godocEnv, "GO111MODULE=auto")
+
+	godocStartDir = "-" // Trigger initial start
+	startGodoc("")
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -211,14 +254,13 @@ func run() error {
 		os.Exit(1)
 	}()
 
-	godocStarted := time.Now()
-
 	pkgs := flag.Args()
 
 	if len(pkgs) == 0 || (len(pkgs) == 1 && pkgs[0] == "") {
 		buf.Reset()
 
 		cmd := exec.Command("go", "list", "...")
+		cmd.Env = godocEnv
 		cmd.Dir = os.TempDir()
 		cmd.Stdout = &buf
 		setDeathSignal(cmd)
@@ -232,43 +274,84 @@ func run() error {
 	}
 
 	var newPkgs []string
+	pkgPaths := make(map[string]string)
 	for _, pkg := range pkgs {
 		if strings.TrimSpace(pkg) == "" {
 			continue
 		}
 
-		buf.Reset()
+		var suppliedPath bool
+
+		dir := ""
+		if _, err := os.Stat(pkg); !os.IsNotExist(err) {
+			dir = pkg
+
+			modFileData, err := ioutil.ReadFile(path.Join(dir, "go.mod"))
+			if err != nil {
+				log.Fatalf("failed to read mod file for %s: %s", pkg, err)
+			}
+
+			modFile, err := modfile.Parse(path.Join(dir, "go.mod"), modFileData, nil)
+			if err != nil {
+				log.Fatalf("failed to parse mod file for %s: %s", pkg, err)
+			}
+
+			pkg = modFile.Module.Mod.Path
+
+			suppliedPath = true
+		} else {
+			srcDir := path.Join(goPath, "src", pkg)
+			if _, err := os.Stat(srcDir); !os.IsNotExist(err) {
+				dir = srcDir
+			}
+		}
 
 		newPkgs = append(newPkgs, pkg)
 
-		cmd := exec.Command("go", "list", "-find", "-f", `{{ .Dir }}`, pkg)
-		cmd.Dir = os.TempDir()
+		buf.Reset()
+
+		search := "./..."
+		if dir == "" {
+			search = pkg
+		}
+
+		cmd := exec.Command("go", "list", "-find", "-f", `{{ .ImportPath }} {{ .Dir }}`, search)
+		cmd.Env = godocEnv
+		if dir == "" {
+			cmd.Dir = os.TempDir()
+		} else {
+			cmd.Dir = dir
+		}
 		cmd.Stdout = &buf
+		cmd.Stderr = &buf
 		setDeathSignal(cmd)
 
 		err = cmd.Run()
 		if err != nil {
-			return fmt.Errorf("failed to list source directory of package %s: %s", pkg, err)
+			pkgPaths[pkg] = dir
+			continue
 		}
 
-		pkgPath := strings.TrimSpace(buf.String())
-		if pkgPath != "" {
-			err := filepath.Walk(pkgPath, func(path string, info os.FileInfo, err error) error {
-				if err != nil {
-					return err
-				} else if !info.IsDir() {
-					return nil
-				} else if strings.HasPrefix(filepath.Base(path), ".") {
-					return filepath.SkipDir
-				}
+		sourceListing := strings.Split(buf.String(), "\n")
+		for i := range sourceListing {
+			firstSpace := strings.Index(sourceListing[i], " ")
+			if firstSpace <= 0 {
+				continue
+			}
 
-				if len(path) > len(pkgPath) && strings.HasPrefix(path, pkgPath) {
-					newPkgs = append(newPkgs, pkg+path[len(pkgPath):])
-				}
-				return nil
-			})
-			if err != nil {
-				return fmt.Errorf("failed to walk source directory of package %s: %s", pkg, err)
+			pkg = sourceListing[i][:firstSpace]
+			pkgPath := sourceListing[i][firstSpace+1:]
+
+			newPkgs = append(newPkgs, pkg)
+
+			if dir == "" || strings.HasPrefix(filepath.Base(pkgPath), ".") {
+				continue
+			}
+
+			if suppliedPath {
+				pkgPaths[pkg] = dir
+			} else {
+				pkgPaths[pkg] = pkgPath
 			}
 		}
 		buf.Reset()
@@ -293,38 +376,44 @@ func run() error {
 		return strings.ToLower(pkgs[i]) < strings.ToLower(pkgs[j])
 	})
 
-	// Allow some time for godoc to initialize
-
-	if time.Since(godocStarted) < 3*time.Second {
-		time.Sleep((3 * time.Second) - time.Since(godocStarted))
-	}
-
 	done := make(chan error)
-	timeout := time.After(15 * time.Second)
-
 	go func() {
 		var (
 			res *http.Response
+			doc *goquery.Document
 			err error
 		)
-		for _, pkg := range pkgs {
+		for _, pkg := range filterPkgs {
 			if verbose {
-				log.Printf("Copying %s docs...", pkg)
+				log.Printf("Copying %s documentation...", pkg)
 			}
+
+			startGodoc(pkgPaths[pkg])
 
 			// Rely on timeout to break loop
 			for {
 				res, err = http.Get(fmt.Sprintf("http://%s/pkg/%s/", listenAddress, pkg))
 				if err == nil {
+					body, err := ioutil.ReadAll(res.Body)
+					if err != nil {
+						done <- fmt.Errorf("failed to get page of %s: %s", pkg, err)
+						return
+					}
+
+					if bytes.Contains(body, scanIncomplete) {
+						time.Sleep(25 * time.Millisecond)
+						continue
+					}
+
+					// Load the HTML document
+					doc, err = goquery.NewDocumentFromReader(bytes.NewReader(body))
+					if err != nil {
+						done <- fmt.Errorf("failed to parse page of %s: %s", pkg, err)
+						return
+					}
+
 					break
 				}
-			}
-
-			// Load the HTML document
-			doc, err := goquery.NewDocumentFromReader(res.Body)
-			if err != nil {
-				done <- fmt.Errorf("failed to get page of %s: %s", pkg, err)
-				return
 			}
 
 			doc.Find("title").First().SetHtml(fmt.Sprintf("%s - %s", path.Base(pkg), siteName))
@@ -355,8 +444,6 @@ func run() error {
 	}()
 
 	select {
-	case <-timeout:
-		return errors.New("godoc failed to start in time")
 	case err = <-done:
 		if err != nil {
 			return fmt.Errorf("failed to copy docs: %s", err)
@@ -370,14 +457,19 @@ func run() error {
 		return fmt.Errorf("failed to make directory lib: %s", err)
 	}
 
-	filterPkgs = filterPkgsWithExcludes(filterPkgs)
-
 	for _, pkg := range filterPkgs {
 		if verbose {
 			log.Printf("Copying %s sources...", pkg)
 		}
 
 		buf.Reset()
+
+		dir := pkgPaths[pkg]
+		if dir == "" {
+			dir = getTmpDir()
+		}
+
+		startGodoc(pkgPaths[pkg])
 
 		cmd := exec.Command("go", "list", "-find", "-f",
 			`{{ join .GoFiles "\n" }}`+"\n"+
@@ -393,7 +485,8 @@ func run() error {
 				`{{ join .TestGoFiles "\n" }}`+"\n"+
 				`{{ join .XTestGoFiles "\n" }}`,
 			pkg)
-		cmd.Dir = getTmpDir()
+		cmd.Env = godocEnv
+		cmd.Dir = dir
 		cmd.Stdout = &buf
 		setDeathSignal(cmd)
 
@@ -411,15 +504,28 @@ func run() error {
 			}
 
 			// Rely on timeout to break loop
-			res, err := http.Get(fmt.Sprintf("http://%s/src/%s/%s", listenAddress, pkg, sourceFile))
-			if err != nil {
-				return fmt.Errorf("failed to get source file page %s for package %s: %s", sourceFile, pkg, err)
-			}
+			var doc *goquery.Document
+			for {
+				res, err := http.Get(fmt.Sprintf("http://%s/src/%s/%s", listenAddress, pkg, sourceFile))
+				if err == nil {
+					body, err := ioutil.ReadAll(res.Body)
+					if err != nil {
+						return fmt.Errorf("failed to get source file page %s of %s: %s", sourceFile, pkg, err)
+					}
 
-			// Load the HTML document
-			doc, err := goquery.NewDocumentFromReader(res.Body)
-			if err != nil {
-				return fmt.Errorf("failed to load document from page for package %s: %s", pkg, err)
+					if bytes.Contains(body, scanIncomplete) {
+						time.Sleep(25 * time.Millisecond)
+						continue
+					}
+
+					// Load the HTML document
+					doc, err = goquery.NewDocumentFromReader(bytes.NewReader(body))
+					if err != nil {
+						return fmt.Errorf("failed to load document from page for package %s: %s", pkg, err)
+					}
+
+					break
+				}
 			}
 
 			doc.Find("title").First().SetHtml(fmt.Sprintf("%s - %s", path.Base(pkg), siteName))
@@ -468,17 +574,18 @@ func run() error {
 		return fmt.Errorf("failed to make directory lib: %s", err)
 	}
 
-	res, err := http.Get(fmt.Sprintf("http://%s/lib/godoc/style.css", listenAddress))
-	if err != nil {
-		return fmt.Errorf("failed to get syle.css: %s", err)
-	}
+	for {
+		res, err := http.Get(fmt.Sprintf("http://%s/lib/godoc/style.css", listenAddress))
+		if err == nil {
+			buf.Reset()
 
-	buf.Reset()
-
-	_, err = buf.ReadFrom(res.Body)
-	res.Body.Close()
-	if err != nil {
-		return fmt.Errorf("failed to get style.css: %s", err)
+			_, err = buf.ReadFrom(res.Body)
+			res.Body.Close()
+			if err != nil {
+				return fmt.Errorf("failed to get style.css: %s", err)
+			}
+			break
+		}
 	}
 
 	buf.WriteString("\n" + additionalCSS)
@@ -491,7 +598,7 @@ func run() error {
 	// Write index
 
 	if verbose {
-		log.Println("Writing index...")
+		log.Println("Writing index.html...")
 	}
 
 	err = writeIndex(&buf, pkgs, filterPkgs)
