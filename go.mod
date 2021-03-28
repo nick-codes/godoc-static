@@ -1,4 +1,4 @@
-module gitlab.com/tslocum/godoc-static
+module code.rocketnine.space/tslocum/godoc-static
 
 go 1.15
 

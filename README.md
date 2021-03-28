@@ -1,5 +1,12 @@
+!!! cbind has moved to [code.rocketnine.space](https://code.rocketnine.space/tslocum/godoc-static) !!!
+====
+
+Please visit https://code.rocketnine.space/tslocum/godoc-static
+
+------------
+
 # godoc-static
-[![CI status](https://gitlab.com/tslocum/godoc-static/badges/master/pipeline.svg)](https://gitlab.com/tslocum/godoc-static/commits/master)
+[![CI status](https://code.rocketnine.space/tslocum/godoc-static/raw/branch/master/badge.svg)](https://code.rocketnine.space/tslocum/godoc-static/commits/master)
 [![Donate](https://img.shields.io/liberapay/receives/rocketnine.space.svg?logo=liberapay)](https://liberapay.com/rocketnine.space)
 
 Generate static Go documentation
@@ -13,7 +20,7 @@ Generate static Go documentation
 Install `godoc-static`:
 
 ```bash
-go get gitlab.com/tslocum/godoc-static
+go get code.rocketnine.space/tslocum/godoc-static
 ```
 
 Also install `godoc`:
@@ -40,14 +47,14 @@ Packages are not downloaded/updated automatically.
 
 ### Usage examples
 
-Generate documentation for `archive`, `net/http` and `~/go/src/gitlab.com/tslocum/cview`:
+Generate documentation for `archive`, `net/http` and `~/go/src/code.rocketnine.space/tslocum/cview`:
 
 ```bash
 godoc-static \
     -site-name="Rocket Nine Labs Documentation" \
     -site-description-file=/home/user/sitefiles/description.md \
     -destination=/home/user/sites/docs \
-    archive net/http gitlab.com/tslocum/cview
+    archive net/http code.rocketnine.space/tslocum/cview
 ```
 
 ### Options
@@ -87,4 +94,4 @@ Site ZIP file name.
 
 ## Support
 
-Please share issues and suggestions [here](https://gitlab.com/tslocum/godoc-static/issues).
+Please share issues and suggestions [here](https://code.rocketnine.space/tslocum/godoc-static/issues).
