@@ -1,4 +1,12 @@
+!!! godoc-static has moved to [code.rocketnine.space](https://code.rocketnine.space/tslocum/godoc-static) !!!
+====
+
+Please visit https://code.rocketnine.space/tslocum/godoc-static
+
+------------
+
 # godoc-static
+[![CI status](https://code.rocketnine.space/tslocum/godoc-static/raw/branch/master/badge.svg)](https://code.rocketnine.space/tslocum/godoc-static/commits/master)
 [![Donate](https://img.shields.io/liberapay/receives/rocketnine.space.svg?logo=liberapay)](https://liberapay.com/rocketnine.space)
 
 Generate static Go documentation
@@ -19,7 +27,7 @@ Also install `godoc`:
 
 ```bash
 go get golang.org/x/tools/cmd/godoc
-``` 
+```
 
 ## Documentation
 
