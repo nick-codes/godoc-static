@@ -79,6 +79,9 @@ Path to markdown file containing site footer.
 #### -site-name
 Site name.
 
+#### -quiet
+Disable all logging except errors.
+
 #### -verbose
 Enable verbose logging.
 

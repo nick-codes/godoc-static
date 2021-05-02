@@ -39,6 +39,7 @@ var (
 	siteZip             string
 	linkIndex           bool
 	excludePackages     string
+	quiet               bool
 	verbose             bool
 
 	goPath string
@@ -54,6 +55,9 @@ var (
 func main() {
 	log.SetPrefix("")
 	log.SetFlags(0)
+	if quiet {
+		log.SetOutput(ioutil.Discard)
+	}
 
 	flag.StringVar(&listenAddress, "listen-address", "localhost:9001", "address for godoc to listen on while scraping pages")
 	flag.StringVar(&siteName, "site-name", "Documentation", "site name")
@@ -65,6 +69,7 @@ func main() {
 	flag.StringVar(&siteZip, "zip", "docs.zip", "name of site ZIP file (blank to disable)")
 	flag.BoolVar(&linkIndex, "link-index", false, "set link targets to index.html instead of folder")
 	flag.StringVar(&excludePackages, "exclude", "", "list of packages to exclude from index")
+	flag.BoolVar(&quiet, "quiet", false, "disable all logging except errors")
 	flag.BoolVar(&verbose, "verbose", false, "enable verbose logging")
 	flag.Parse()
 
