@@ -37,6 +37,7 @@ var (
 	siteFooterFile      string
 	siteDestination     string
 	siteZip             string
+	disableFilter       bool
 	linkIndex           bool
 	excludePackages     string
 	quiet               bool
@@ -67,6 +68,7 @@ func main() {
 	flag.StringVar(&siteFooterFile, "site-footer-file", "", "path to markdown file containing site footer")
 	flag.StringVar(&siteDestination, "destination", "", "path to write site HTML")
 	flag.StringVar(&siteZip, "zip", "docs.zip", "name of site ZIP file (blank to disable)")
+	flag.BoolVar(&disableFilter, "disable-filter", false, `do not exclude packages named "testdata", "internal", or "cmd"`)
 	flag.BoolVar(&linkIndex, "link-index", false, "set link targets to index.html instead of folder")
 	flag.StringVar(&excludePackages, "exclude", "", "list of packages to exclude from index")
 	flag.BoolVar(&quiet, "quiet", false, "disable all logging except errors")
@@ -82,14 +84,24 @@ func main() {
 	}
 }
 
+var skipPackages = []string{"cmd", "internal", "testdata"}
+
 func filterPkgsWithExcludes(pkgs []string) []string {
 	excludePackagesSplit := strings.Split(excludePackages, " ")
 	var tmpPkgs []string
 PACKAGEINDEX:
 	for _, pkg := range pkgs {
 		for _, excludePackage := range excludePackagesSplit {
-			if strings.Contains(pkg, "\\") || strings.Contains(pkg, "testdata") || strings.Contains(pkg, "internal") || pkg == "cmd" || pkg == excludePackage || strings.HasPrefix(pkg, excludePackage+"/") {
+			if pkg == excludePackage || strings.HasPrefix(pkg, excludePackage+"/") {
 				continue PACKAGEINDEX
+			}
+
+			if !disableFilter {
+				for _, skipPackage := range skipPackages {
+					if strings.Contains(pkg, "/"+skipPackage+"/") || strings.HasSuffix(pkg, "/"+skipPackage) {
+						continue PACKAGEINDEX
+					}
+				}
 			}
 		}
 		tmpPkgs = append(tmpPkgs, pkg)
@@ -380,6 +392,10 @@ func run() error {
 	sort.Slice(pkgs, func(i, j int) bool {
 		return strings.ToLower(pkgs[i]) < strings.ToLower(pkgs[j])
 	})
+
+	if !disableFilter {
+		filterPkgs = pkgs
+	}
 
 	done := make(chan error)
 	go func() {

@@ -1,5 +1,4 @@
 # godoc-static
-[![CI status](https://code.rocketnine.space/tslocum/godoc-static/raw/branch/master/badge.svg)](https://code.rocketnine.space/tslocum/godoc-static/commits/master)
 [![Donate](https://img.shields.io/liberapay/receives/rocketnine.space.svg?logo=liberapay)](https://liberapay.com/rocketnine.space)
 
 Generate static Go documentation
