@@ -39,6 +39,7 @@ var (
 	siteZip             string
 	disableFilter       bool
 	linkIndex           bool
+	go111Modules	      bool
 	excludePackages     string
 	quiet               bool
 	verbose             bool
@@ -70,6 +71,7 @@ func main() {
 	flag.StringVar(&siteZip, "zip", "docs.zip", "name of site ZIP file (blank to disable)")
 	flag.BoolVar(&disableFilter, "disable-filter", false, `do not exclude packages named "testdata", "internal", or "cmd"`)
 	flag.BoolVar(&linkIndex, "link-index", false, "set link targets to index.html instead of folder")
+	flag.BoolVar(&go111Modules, "go111modules", true, "use -go111Modules=false to turn off GO111MODULES=auto env addition")	
 	flag.StringVar(&excludePackages, "exclude", "", "list of packages to exclude from index")
 	flag.BoolVar(&quiet, "quiet", false, "disable all logging except errors")
 	flag.BoolVar(&verbose, "verbose", false, "enable verbose logging")
@@ -253,12 +255,15 @@ func run() error {
 
 	godocEnv = make([]string, len(os.Environ()))
 	copy(godocEnv, os.Environ())
-	for i, e := range godocEnv {
-		if strings.HasPrefix(e, "GO111MODULE=") {
-			godocEnv[i] = ""
+
+	if (go111Modules) {
+		for i, e := range godocEnv {
+			if strings.HasPrefix(e, "GO111MODULE=") {
+				godocEnv[i] = ""
+			}
 		}
+		godocEnv = append(godocEnv, "GO111MODULE=auto")
 	}
-	godocEnv = append(godocEnv, "GO111MODULE=auto")
 
 	godocStartDir = "-" // Trigger initial start
 	startGodoc("")
